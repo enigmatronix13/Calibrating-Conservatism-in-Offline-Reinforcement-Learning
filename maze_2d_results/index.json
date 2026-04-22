@@ -1,0 +1,14 @@
+{
+  "timestamp": "20260422_135331",
+  "num_files": 8,
+  "files": [
+    "README.md",
+    "all_runs.json",
+    "all_runs.pkl",
+    "config.json",
+    "results_summary.csv",
+    "results_summary.json",
+    "training_curves.json",
+    "training_curves.pkl"
+  ]
+}
