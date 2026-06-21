@@ -74,30 +74,6 @@ def plot_training_curves() -> None:
     save_all(fig, "training_curves")
 
 
-def plot_final_scores() -> None:
-    summary = json.load(open(RESULTS / "results_summary.json"))
-    means = [summary[a][0] for a in ALGO_ORDER if a in summary]
-    stds = [summary[a][1] for a in ALGO_ORDER if a in summary]
-    labels = [a for a in ALGO_ORDER if a in summary]
-    x = np.arange(len(labels))
-    fig, ax = plt.subplots(figsize=(6.5, 3.6))
-    bars = ax.bar(
-        x,
-        means,
-        yerr=stds,
-        capsize=4,
-        color=[COLORS.get(a, "#333333") for a in labels],
-        edgecolor="black",
-        linewidth=0.6,
-    )
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
-    ax.set_ylabel(r"Final proxy score")
-    ax.set_title(r"Final score (mean of last 3 checkpoints, 3 seeds)")
-    ax.grid(True, axis="y", alpha=0.3)
-    save_all(fig, "final_scores")
-
-
 def plot_cer_urc() -> None:
     diag = json.load(open(RESULTS / "diagnostics.json"))
     algos = ("CQL", "APTQ-CQL")
@@ -175,7 +151,6 @@ def plot_coverage_map() -> None:
 def main():
     plt.rcParams.update({"font.size": 9, "figure.dpi": 120})
     plot_training_curves()
-    plot_final_scores()
     plot_cer_urc()
     plot_coverage_map()
     print(

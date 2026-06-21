@@ -1,5 +1,11 @@
 # Calibrating Conservatism in Offline Reinforcement Learning
 
+Official code, data, and paper for *Calibrating Conservatism in Offline
+Reinforcement Learning* (Kalyanakumar, Ranjan, Reddy, Sri Varshini). It
+provides a unified comparison of seven offline RL algorithms (TD3-BC, CQL,
+Q-ensemble, BEAR, UWAC, MOPO, APTQ-CQL) with coverage-tier CER/URC
+diagnostics across D4RL `maze2d` navigation and `hopper` locomotion.
+
 Empirical study of pessimism calibration across three D4RL datasets spanning
 two domains:
 

@@ -45,11 +45,11 @@
 \title{Calibrating Conservatism in Offline Reinforcement Learning\thanks{Code, data, and reproduction instructions: \url{https://github.com/enigmatronix13/Calibrating-Conservatism-in-Offline-Reinforcement-Learning}.}}
 
 \author{%
-\IEEEauthorblockN{Kaaviya Kalyanakumar\IEEEauthorrefmark{1}}
+\IEEEauthorblockN{Kaaviya Kalyanakumar}
 \IEEEauthorblockA{\textit{Manipal Institute of Technology}, Manipal, India\\
   kaaviya.mitmpl2023@learner.manipal.edu}
 \and
-\IEEEauthorblockN{Kashvi Ranjan\IEEEauthorrefmark{1}}
+\IEEEauthorblockN{Kashvi Ranjan}
 \IEEEauthorblockA{\textit{Manipal Institute of Technology}, Manipal, India\\
   kashvi1.mitmpl2023@learner.manipal.edu}
 \linebreakand
@@ -60,7 +60,6 @@
 \IEEEauthorblockN{Dr.\ Upadrasta Shivani Sri Varshini}
 \IEEEauthorblockA{\textit{Manipal Institute of Technology}, Manipal, India\\
   shivani.srivarshini@manipal.edu}
-\thanks{\IEEEauthorrefmark{1}These authors contributed equally to this work.}
 }
 \maketitle
 
@@ -251,8 +250,9 @@ underexplored from the perspective of pessimism calibration. We pair these
 sparse-navigation datasets with the canonical \texttt{hopper-medium-v2}
 locomotion dataset to contrast the two regimes directly. Implicit and
 advantage-weighted offline methods represent a complementary class that
-mitigates overestimation without explicit conservatism; integrating these as
-additional baselines is identified as near-term future work.
+mitigates overestimation without an explicit conservative penalty;
+integrating these as additional baselines is identified as near-term future
+work.
 
 \section{Empirical Framework}
 \label{sec:method}
@@ -444,8 +444,9 @@ proxy enables fair cross-algorithm comparison under identical budgets, but
 it is \emph{not} a D4RL rollout or normalised return~\cite{fu2020d4rl}, and
 its magnitude depends on the per-domain reward scale (hopper $Q$ values are
 correspondingly larger than maze ones). Comparisons are therefore made
-\emph{within} a dataset. Environment rollouts with official D4RL
-normalisation are left to future work.
+\emph{within} a dataset, and this proxy should be read as a calibration
+diagnostic rather than a performance score; environment rollouts with
+official D4RL normalisation are left to future work.
 
 \subsection{Diagnostic Protocol}
 
@@ -673,7 +674,7 @@ calibration patterns but do not prove a causal benefit of spatial
 $\alpha(s)$. \textbf{Next steps.} (i)~D4RL rollouts with MuJoCo; (ii)~more
 locomotion levels (medium-replay, expert) and additional maze sizes;
 (iii)~coverage-conditioned $\alpha(s){=}f(\rho(s))$ with tier-aware
-evaluation; (iv)~implicit-Q and AWAC baselines.
+evaluation; (iv)~implicit-Q and advantage-weighted baselines.
 
 \section{Conclusion}
 \label{sec:conclusion}
