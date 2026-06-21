@@ -19,16 +19,20 @@ pip install -r requirements.txt
 ```bash
 cd experiments
 
-# training + proxy scores (default = maze2d-medium-sparse-v1)
-python maze2d_offline_rl.py
-MAZE2D_DATASET=maze2d-large-sparse-v1 python maze2d_offline_rl.py
-MAZE2D_DATASET=hopper-medium-v2       python maze2d_offline_rl.py
+# Train and evaluate offline RL baselines
+python offline_rl.py --dataset maze2d-medium-sparse-v1
+python offline_rl.py --dataset maze2d-large-sparse-v1
+python offline_rl.py --dataset hopper-medium-v2
 
-# coverage-tier diagnostics (needs checkpoints from above)
-MAZE2D_DATASET=<dataset> python compute_diagnostics.py
+# Compute coverage-tier diagnostics (requires trained checkpoints)
+python compute_diagnostics.py --dataset maze2d-medium-sparse-v1
+python compute_diagnostics.py --dataset maze2d-large-sparse-v1
+python compute_diagnostics.py --dataset hopper-medium-v2
 
-# figures -> paper/figures/ and overleaf/figures/
-MAZE2D_DATASET=<dataset> python plot_figures.py
+# Generate figures for the paper and Overleaf
+python plot_figures.py --dataset maze2d-medium-sparse-v1
+python plot_figures.py --dataset maze2d-large-sparse-v1
+python plot_figures.py --dataset hopper-medium-v2
 ```
 Each results dir gets `results_summary.json/csv`, `all_runs.json`, `training_curves.json`, `checkpoints/`, `config.json`.
 
