@@ -36,9 +36,9 @@ python plot_figures.py --dataset hopper-medium-v2
 ```
 Each results dir gets `results_summary.json/csv`, `all_runs.json`, `training_curves.json`, `checkpoints/`, `config.json`.
 
-**Protocol:** matched 256–256 MLPs, Adam 3e-4, target-critic Bellman backups (γ=0.99, τ=0.005), target clip ±10, 10×200 grad steps/seed. Score = mean Q(s, π(s)) on 5,000 dataset states — a within-dataset proxy, not a D4RL normalised return.
+**Protocol:** matched 256–256 MLPs, Adam 3e-4, target-critic Bellman backups (γ=0.99, τ=0.005), target clip ±10, 10×200 grad steps/seed. Score = mean Q(s, π(s)) on 5,000 dataset states - a within-dataset proxy, not a D4RL normalised return.
 
 ## Key findings
 - Stable ranking on all three datasets: CQL > APTQ-CQL ≫ {UWAC, Ensemble, TD3-BC} > MOPO/BEAR.
-- CER < 0 in every tier/dataset — CQL-family critics are optimistic vs. a Monte Carlo baseline; APTQ-CQL reduces the excess, most in well-covered tiers.
-- URC flips sign by domain: positive on sparse mazes (uncertainty doesn't track return), negative on hopper (uncertainty anticorrelates with return) — ensemble disagreement is only a reliable calibration signal where coverage is dense.
+- CER < 0 in every tier/dataset - CQL-family critics are optimistic vs. a Monte Carlo baseline; APTQ-CQL reduces the excess, most in well-covered tiers.
+- URC flips sign by domain: positive on sparse mazes (uncertainty doesn't track return), negative on hopper (uncertainty anticorrelates with return) - ensemble disagreement is only a reliable calibration signal where coverage is dense.
