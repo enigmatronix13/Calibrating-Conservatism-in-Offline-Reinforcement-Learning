@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 import urllib.request
 from dataclasses import dataclass
@@ -13,15 +14,60 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-DATASET_NAME = "maze2d-medium-sparse-v1"
-DATA_URL = (
-    "http://rail.eecs.berkeley.edu/datasets/offline_rl/maze2d/"
-    "maze2d-medium-sparse-v1.hdf5"
-)
-HDF5_FILE = "maze2d-medium-sparse-v1.hdf5"
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_DIR = REPO_ROOT / "maze_2d_results"
+
+# ---------------------------------------------------------------------------
+# Dataset registry. Select the active dataset with the MAZE2D_DATASET
+# environment variable (defaults to the medium maze). Each entry writes to its
+# own results directory so artifacts from different datasets never collide.
+# ---------------------------------------------------------------------------
+_MAZE2D_BASE_URL = "http://rail.eecs.berkeley.edu/datasets/offline_rl/maze2d/"
+_MUJOCO_BASE_URL = "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/"
+
+# Each entry carries a `reward_scale` so that dense-reward locomotion datasets
+# (hopper) are brought onto the same Q-value range as the sparse maze datasets,
+# letting us share the clip threshold and proxy-value metric across domains.
+DATASETS = {
+    "maze2d-medium-sparse-v1": {
+        "url": _MAZE2D_BASE_URL + "maze2d-medium-sparse-v1.hdf5",
+        "results_dir": "maze_2d_results",
+        "fig_prefix": "",
+        "reward_scale": 1.0,
+        "q_clip": 10.0,
+    },
+    "maze2d-large-sparse-v1": {
+        "url": _MAZE2D_BASE_URL + "maze2d-large-sparse-v1.hdf5",
+        "results_dir": "maze2d_large_results",
+        "fig_prefix": "large_",
+        "reward_scale": 1.0,
+        "q_clip": 10.0,
+    },
+    "hopper-medium-v2": {
+        # Filename uses an underscore (hopper_medium-v2.hdf5) on the D4RL server.
+        "url": _MUJOCO_BASE_URL + "hopper_medium-v2.hdf5",
+        "results_dir": "hopper_results",
+        "fig_prefix": "hopper_",
+        # Dense rewards (~0-4 per step) accumulate to returns in the hundreds;
+        # scaling by 1e-2 keeps discounted targets within the shared clip band.
+        "reward_scale": 1e-2,
+        "q_clip": 10.0,
+    },
+}
+
+DATASET_NAME = os.environ.get("MAZE2D_DATASET", "maze2d-medium-sparse-v1")
+if DATASET_NAME not in DATASETS:
+    raise ValueError(
+        f"Unknown MAZE2D_DATASET={DATASET_NAME!r}. "
+        f"Choose one of: {', '.join(DATASETS)}"
+    )
+
+_DATASET_CFG = DATASETS[DATASET_NAME]
+DATA_URL = _DATASET_CFG["url"]
+HDF5_FILE = f"{DATASET_NAME}.hdf5"
+FIG_PREFIX = _DATASET_CFG["fig_prefix"]
+OUTPUT_DIR = REPO_ROOT / _DATASET_CFG["results_dir"]
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
+REWARD_SCALE = _DATASET_CFG["reward_scale"]
 
 SEEDS = [0, 1, 2]
 OUTER_STEPS = 10
@@ -31,7 +77,7 @@ LR = 3e-4
 GAMMA = 0.99
 TAU = 0.005
 GRAD_CLIP = 1.0
-Q_CLIP = 10.0
+Q_CLIP = _DATASET_CFG["q_clip"]
 ENSEMBLE_K = 5
 CQL_ALPHA = 1.0
 BC_WEIGHT = 0.1
@@ -180,15 +226,19 @@ def load_dataset_cpu(path: Path) -> DatasetBundle:
         act = f["actions"][:].astype(np.float32)
         rew = f["rewards"][:].astype(np.float32).reshape(-1)
         terminals = f["terminals"][:].astype(np.bool_).reshape(-1)
-        timeouts = f["timeouts"][:].astype(np.bool_).reshape(-1)
+        if "timeouts" in f:
+            timeouts = f["timeouts"][:].astype(np.bool_).reshape(-1)
+        else:
+            timeouts = np.zeros_like(terminals)
 
+    rew = rew * REWARD_SCALE
     episode_end = terminals | timeouts
     next_obs = np.empty_like(obs)
     next_obs[:-1] = obs[1:]
     next_obs[-1] = obs[-1]
-    for i in range(len(obs) - 1):
-        if episode_end[i]:
-            next_obs[i] = obs[i]
+    # Episode-terminal transitions point to themselves (vectorised; equivalent
+    # to a per-index loop but tractable for multi-million-row datasets).
+    next_obs[episode_end] = obs[episode_end]
 
     obs_mean = obs.mean(0)
     obs_std = obs.std(0) + 1e-3

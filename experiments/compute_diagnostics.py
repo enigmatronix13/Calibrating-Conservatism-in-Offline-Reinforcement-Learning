@@ -18,6 +18,7 @@ from sklearn.neighbors import NearestNeighbors
 from common import (
     BATCH_SIZE,
     CHECKPOINT_DIR,
+    DATASET_NAME,
     ENSEMBLE_K,
     GAMMA,
     INNER_STEPS,
@@ -35,7 +36,7 @@ from common import (
     set_seed,
 )
 
-DIAG_SAMPLE = 10_000
+DIAG_SAMPLE = 50_000
 TIER_LABELS = ("High", "Med", "Low")
 
 
@@ -177,7 +178,7 @@ def main():
     uncertainty = batch_uncertainty(ensemble, obs_s, act_s)
 
     results = {
-        "dataset": "maze2d-medium-sparse-v1",
+        "dataset": DATASET_NAME,
         "knn_k": KNN_K,
         "diag_sample": DIAG_SAMPLE,
         "global_mean_uncertainty": float(uncertainty.mean()),

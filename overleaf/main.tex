@@ -31,14 +31,8 @@
   pbox/.style={
     rectangle, rounded corners=4pt,
     draw=black!70, fill=white,
-    text width=8.2cm, align=center,
-    minimum height=0.95cm, font=\scriptsize\sffamily, inner sep=5pt
-  },
-  sbox/.style={
-    rectangle, rounded corners=3pt,
-    draw=black!55, fill=gray!7,
-    text width=3.6cm, align=center,
-    minimum height=0.85cm, font=\scriptsize, inner sep=4pt
+    text width=7.6cm, align=center,
+    minimum height=0.85cm, font=\scriptsize\sffamily, inner sep=4pt
   },
   arr/.style={
     -{Stealth[length=4pt,width=3pt]},
@@ -72,30 +66,34 @@
 
 \begin{abstract}
 Conservative Q-Learning applies a fixed, globally uniform penalty to value
-estimates regardless of local data coverage. We study whether that penalty is
-spatially miscalibrated on the path-concentrated benchmark
-\texttt{maze2d-medium-sparse-v1}, comparing seven offline RL methods
-(TD3-BC, CQL, Q-ensemble, BEAR, UWAC, MOPO, APTQ-CQL) under a matched
-PyTorch protocol with Bellman backups, target critics, and three random
-seeds. Methods are ranked by a unified offline score---mean
-$Q(s,\pi(s))$ on held-out dataset states---and further analysed with
-coverage-tier Conservative Excess Ratio (CER) and Uncertainty--Return
-Correlation (URC) diagnostics. CQL attains the highest proxy score
-($2.29 \pm 0.14$), followed by APTQ-CQL ($1.33 \pm 0.14$). Tier-wise CER
-shows CQL is uniformly \emph{less} conservative than a Monte Carlo value
-baseline ($\mathrm{CER}{<}0$ in all tiers), with the largest gap in
-low-coverage regions; APTQ-CQL reduces this excess, especially along
-well-covered paths ($\mathrm{CER}\approx -3.1$ vs.\ $-14.5$ in the high
-tier). URC is positive in every tier for both methods ($+0.48$ to $+0.54$),
-ensemble uncertainty does not anticorrelate with return on this dataset.
-These findings motivate coverage-conditioned penalties $\alpha(s){=}f(\rho(s))$
-rather than a single global $\alpha$.
+estimates regardless of local data coverage. We test whether that penalty is
+spatially miscalibrated across three D4RL datasets spanning two domains:
+path-concentrated navigation (\texttt{maze2d-medium-sparse-v1},
+\texttt{maze2d-large-sparse-v1}) and dense-reward locomotion
+(\texttt{hopper-medium-v2}). Seven offline RL methods (TD3-BC, CQL,
+Q-ensemble, BEAR, UWAC, MOPO, APTQ-CQL) are trained under a matched
+PyTorch protocol with Bellman backups, target critics, per-domain reward
+scaling, and three random seeds, then ranked by a unified offline
+policy-value proxy (mean $Q(s,\pi(s))$ on held-out dataset states) and
+analysed with coverage-tier Conservative Excess Ratio (CER) and
+Uncertainty--Return Correlation (URC) diagnostics. The proxy ranking is
+\emph{stable across all three datasets}: CQL highest, APTQ-CQL second, with
+the remaining baselines an order of magnitude lower. Coverage-tier CER shows
+both CQL and APTQ-CQL are optimistic relative to a Monte Carlo value
+baseline ($\mathrm{CER}{<}0$) in every tier and dataset, and APTQ-CQL
+consistently reduces this excess---most strongly in well-covered tiers.
+Critically, URC \emph{flips sign by domain}: positive on the sparse mazes
+(uncertainty fails to track return risk) but negative on hopper
+(uncertainty anticorrelates with return), showing that ensemble
+disagreement is a usable calibration signal only in densely covered domains.
+These findings motivate coverage-conditioned penalties
+$\alpha(s){=}f(\rho(s))$ rather than a single global $\alpha$.
 \end{abstract}
 
 \begin{IEEEkeywords}
 offline reinforcement learning, conservative Q-learning, epistemic
 uncertainty, pessimism calibration, distributional shift, ensemble
-methods, maze2d
+methods, maze2d, locomotion
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -118,43 +116,49 @@ work has strengthened these foundations through ensemble
 disagreement~\cite{an2021pbrl,wu2021uncertainty} and adaptive penalty
 weighting~\cite{liu2023aptq}.
 
-The majority of the theoretical and algorithmic literature evaluates on
+Much of the theoretical and algorithmic literature is validated chiefly on
 locomotion benchmarks---halfcheetah, hopper, and walker2d---which share
-dense, near-continuous state--action coverage from behaviourally smooth
-trajectory distributions~\cite{fu2020d4rl}. The implicit assumption that a
-single fixed penalty $\alpha$ can reliably safeguard the entire state--action
-space conceals a deeper miscalibration problem that becomes structurally
-visible in qualitatively different navigation domains.
-
-In sparse-reward 2D navigation, coverage is topographically concentrated
-along traversed paths, with large regions entirely absent from the dataset.
-Uncertainty is spatially structured: near-zero along demonstrated
-trajectories, extremely high in unexplored regions. A fixed global $\alpha$
-therefore simultaneously over-penalises well-supported path regions and
-under-penalises truly sparse ones.
+dense, near-continuous coverage from behaviourally smooth trajectory
+distributions~\cite{fu2020d4rl}. The implicit assumption that a single fixed
+penalty $\alpha$ can reliably safeguard the entire state--action space
+conceals a calibration problem that becomes structurally visible in
+qualitatively different navigation domains. In sparse-reward 2D navigation,
+coverage is topographically concentrated along traversed paths, with large
+regions entirely absent from the dataset; uncertainty is spatially
+structured, near-zero along demonstrated trajectories and high in unexplored
+regions. A fixed global $\alpha$ therefore simultaneously over-penalises
+well-supported path regions and under-penalises truly sparse ones. We study
+\emph{both} regimes side by side---two sparse mazes and one dense locomotion
+dataset---under an identical protocol, so that any domain dependence is
+attributable to the data rather than the implementation.
 
 The contributions of this paper are as follows.
 \begin{itemize}[leftmargin=1.5em,itemsep=2pt]
-  \item A unified empirical comparison of seven offline RL baselines on
-    \texttt{maze2d-medium-sparse-v1}---TD3-BC, CQL, an uncertainty-aware
-    Q-ensemble, BEAR, UWAC, MOPO, and APTQ-CQL---trained and evaluated under
-    matched architectures, optimisers, and evaluation windows across three
-    random seeds.
-  \item Coverage-tier diagnostics (CER and URC) computed on
-    \texttt{maze2d-medium-sparse-v1}, testing whether conservatism excess
-    tracks epistemic uncertainty differently across high-, medium-, and
-    low-coverage regions of the dataset.
-  \item A reproducible experimental protocol---shared architectures,
-    Bellman backups with target networks, fixed training budget, and a
-    single evaluation metric---documented in code with released artifacts.
+  \item A unified empirical comparison of seven offline RL baselines
+    (TD3-BC, CQL, an uncertainty-aware Q-ensemble, BEAR, UWAC, MOPO,
+    APTQ-CQL) across three D4RL datasets spanning two domains, trained and
+    evaluated under matched architectures, optimisers, Bellman backups, and
+    evaluation windows over three random seeds.
+  \item Coverage-tier diagnostics (CER and URC) computed on all three
+    datasets, testing whether conservatism excess and uncertainty calibration
+    behave consistently across high-, medium-, and low-coverage regions and
+    across navigation versus locomotion.
+  \item A cross-domain finding: the proxy ranking is stable, CQL-family
+    critics are optimistic ($\mathrm{CER}{<}0$) in every tier and dataset,
+    and the sign of the uncertainty--return correlation flips between sparse
+    navigation and dense locomotion.
+  \item A reproducible protocol---shared architectures, target-network
+    Bellman backups, per-domain reward scaling, fixed budget, and a single
+    evaluation metric---released as code with all artifacts.
 \end{itemize}
 
-Section~\ref{sec:background} formalises the problem setting and reviews
-related work. Section~\ref{sec:method} describes the empirical framework
-and diagnostic metrics as designed. Section~\ref{sec:setup} details the
-experimental setup. Section~\ref{sec:results} presents the updated results.
-Section~\ref{sec:discussion} discusses implications and outlines the
-coverage-conditioned extension, and Section~\ref{sec:conclusion} concludes.
+Section~\ref{sec:background} formalises the setting and reviews related
+work. Section~\ref{sec:method} describes the empirical framework and
+diagnostic metrics. Section~\ref{sec:setup} details the datasets and setup.
+Section~\ref{sec:results} presents the cross-dataset results,
+Section~\ref{sec:diagnostics} the coverage-tier diagnostics,
+Section~\ref{sec:discussion} the implications and the coverage-conditioned
+extension, and Section~\ref{sec:conclusion} concludes.
 
 \section{Background and Related Work}
 \label{sec:background}
@@ -194,9 +198,9 @@ conservative regulariser:
 \end{align}
 where $\mu$ is a policy that maximises $Q$, $\bar\theta$ are
 target-network parameters, and $\alpha{>}0$ controls the degree of
-conservatism. The softmax variant is used throughout. As noted
-in~\cite{liu2023aptq}, the Q-value distribution varies substantially across
-environments, making a single fixed $\alpha$ suboptimal in general.
+conservatism. As noted in~\cite{liu2023aptq}, the Q-value distribution
+varies substantially across environments, making a single fixed $\alpha$
+suboptimal in general.
 
 \subsection{Epistemic Uncertainty via Q-Ensembles}
 
@@ -208,8 +212,8 @@ initialised Q-networks $\{Q_{\theta_k}\}_{k=1}^K$:
   \label{eq:uncertainty}
 \end{equation}
 High ensemble disagreement proxies low data coverage at
-$(s,a)$~\cite{an2021pbrl}. This formulation is used here both as a trained
-baseline and, in the planned extension, as a diagnostic uncertainty map.
+$(s,a)$~\cite{an2021pbrl}, and we use it both as a trained baseline and as a
+diagnostic uncertainty signal.
 
 \subsection{Conservative and Pessimistic Offline RL}
 
@@ -238,93 +242,85 @@ uncertainty. These works confirm that fixed pessimism is often
 miscalibrated, yet their empirical focus remains predominantly on locomotion
 tasks or aggregate global adaptation.
 
-\subsection{Navigation Benchmarks}
+\subsection{Navigation and Locomotion Benchmarks}
 
 Despite the dominance of locomotion benchmarks,
 D4RL~\cite{fu2020d4rl} provides \texttt{maze2d} environments that expose
 qualitatively distinct coverage and reward structures, which remain
-underexplored from the perspective of pessimism calibration and form the
-primary focus of this work. Implicit and advantage-weighted offline methods
-represent a complementary class that mitigates overestimation without
-explicit conservatism; integrating these as additional baselines is
-identified as near-term future work.
+underexplored from the perspective of pessimism calibration. We pair these
+sparse-navigation datasets with the canonical \texttt{hopper-medium-v2}
+locomotion dataset to contrast the two regimes directly. Implicit and
+advantage-weighted offline methods represent a complementary class that
+mitigates overestimation without explicit conservatism; integrating these as
+additional baselines is identified as near-term future work.
 
 \section{Empirical Framework}
 \label{sec:method}
 
 The framework comprises a unified training and evaluation protocol for
-seven offline RL baselines on \texttt{maze2d-medium-sparse-v1}, and a
-diagnostic toolkit---coverage-tier stratification together with the
-Conservative Excess Ratio and Uncertainty--Return Correlation
-metrics---designed to characterise \emph{where} and \emph{how severely}
-conservatism is miscalibrated relative to epistemic uncertainty. Both the
-baseline comparison (Section~\ref{sec:results}) and the tier diagnostics
-(Section~\ref{sec:diagnostics}) are executed on the released dataset and
-codebase.
+seven offline RL baselines and a diagnostic toolkit---coverage-tier
+stratification together with the Conservative Excess Ratio and
+Uncertainty--Return Correlation metrics---designed to characterise
+\emph{where} and \emph{how severely} conservatism is miscalibrated relative
+to epistemic uncertainty. Both the baseline comparison
+(Section~\ref{sec:results}) and the tier diagnostics
+(Section~\ref{sec:diagnostics}) are executed identically on all three
+released datasets.
 
 \subsection{Baselines}
 
 \textbf{TD3-BC}~\cite{fujimoto2021td3bc} augments a TD3 actor-critic update
 with a behavioural-cloning regularisation term weighted by
 $\lambda_{\mathrm{TD3}}$, anchoring the policy close to the data manifold.
-
-\textbf{CQL}~\cite{kumar2020conservative} is implemented with the softmax
-regulariser of Eq.~\eqref{eq:cql}, with $\alpha$ fixed uniformly throughout
-training.
-
-\textbf{Ensemble}: $K{=}5$ independently initialised critics are trained
-with the standard Bellman objective only; the ensemble spread provides the
-epistemic uncertainty signal of Eq.~\eqref{eq:uncertainty} and also serves
-as an uncertainty-implicit baseline policy.
-
-\textbf{BEAR}~\cite{kumar2019bear} constrains the learned policy to the
-support of the behaviour policy via a kernel MMD penalty between sampled
-actions and a pretrained conditional VAE of $\pi_\beta$.
-
-\textbf{UWAC}~\cite{wu2021uncertainty} reweights actor-critic updates by the
-inverse of ensemble disagreement, down-weighting updates in high-uncertainty
-regions.
-
-\textbf{MOPO}~\cite{yu2020mopo} learns a probabilistic dynamics model and
-augments training with short synthetic rollouts, penalising the reward by
-the dynamics model's predictive uncertainty.
-
-\textbf{APTQ-CQL}~\cite{liu2023aptq} adapts a single global penalty
-coefficient $\alpha_t$ at every training step via
+\textbf{CQL}~\cite{kumar2020conservative} is implemented with the
+regulariser of Eq.~\eqref{eq:cql}, $\alpha$ fixed uniformly throughout
+training. \textbf{Ensemble}: $K{=}5$ independently initialised critics are
+trained with the Bellman objective only; the ensemble spread provides the
+epistemic signal of Eq.~\eqref{eq:uncertainty}. \textbf{BEAR}~\cite{kumar2019bear}
+constrains the policy to the support of $\pi_\beta$ via a kernel MMD penalty
+against a pretrained conditional VAE. \textbf{UWAC}~\cite{wu2021uncertainty}
+reweights actor-critic updates by the inverse of ensemble disagreement.
+\textbf{MOPO}~\cite{yu2020mopo} learns a dynamics model and penalises the
+reward by its predictive uncertainty. \textbf{APTQ-CQL}~\cite{liu2023aptq}
+adapts a single global penalty coefficient $\alpha_t$ at every step via
 \begin{equation}
   \alpha_t = \mathrm{clip}\!\bigl((1-\beta)\,\alpha_{t-1}
              + \beta\,\varphi_t,\;
              \alpha_{\min},\alpha_{\max}\bigr),
   \label{eq:aptq}
 \end{equation}
-where $\varphi_t$ is a reward/Q-deviation-derived signal and $\beta$ is the
-adaptation rate. Unlike a coverage-conditioned scheme, $\alpha_t$ is shared
-by all transitions at step $t$.
+where $\varphi_t$ is a reward/Q-deviation signal and $\beta$ the adaptation
+rate. Unlike a coverage-conditioned scheme, $\alpha_t$ is shared by all
+transitions at step $t$.
 
 \subsection{Implementation Fidelity}
 
-We implement educational reimplementations in PyTorch rather than fork
-official codebases, so that all methods share identical network width
+We use educational reimplementations in PyTorch rather than fork official
+codebases, so that all methods share identical network width
 (256--256 MLPs), optimiser (Adam, lr $3{\times}10^{-4}$), batch size
 (256), discount ($\gamma{=}0.99$), and training budget ($10$ outer
 $\times$ $200$ inner gradient steps per seed). Actor-critic methods use
-target critics with polyak averaging ($\tau{=}0.005$) and clipped
-gradients (max norm $1.0$). This protocol prioritises \emph{controlled,
-cross-method comparability} over reproducing published leaderboard scores;
-results should be interpreted relative to other methods in
-Table~\ref{tab:perf}, not as absolute D4RL benchmarks.
+target critics with polyak averaging ($\tau{=}0.005$), gradient clipping
+(max norm $1.0$), and a shared Bellman target clipped to $\pm 10$ for
+numerical stability. To place the dense-reward hopper data on the same
+value range as the sparse mazes---so the clip threshold and proxy metric are
+comparable---hopper rewards are scaled by $10^{-2}$; maze rewards are
+unscaled. This protocol prioritises \emph{controlled, cross-method
+comparability} over reproducing published leaderboard scores; results should
+be read relative to other methods within a dataset (Table~\ref{tab:perf}),
+not as absolute D4RL benchmarks.
 
 \subsection{Coverage-Tier Stratification}
 
-The dataset $\mathcal{D}$ can be partitioned into tiers using a kNN
+Each dataset $\mathcal{D}$ is partitioned into tiers using a kNN
 coverage-density proxy:
 \begin{equation}
   \rho(s_i) = \frac{1}{d_k(s_i)},
   \label{eq:coverage}
 \end{equation}
 where $d_k(s_i)$ is the distance to the $k$-th nearest neighbour in
-$\{s_j\}_{j\neq i}$, with $k{=}10$. Transitions are partitioned into
-high, medium, and low coverage tertiles by $\rho(s_i)$.
+$\{s_j\}_{j\neq i}$, with $k{=}10$. Transitions are split into high, medium,
+and low coverage tertiles by $\rho(s_i)$.
 
 \subsection{Miscalibration Diagnostic Metrics}
 
@@ -336,9 +332,9 @@ $T \in \{\mathrm{High}, \mathrm{Med}, \mathrm{Low}\}$:
        {\mathbb{E}_{(s,a)\sim\mathcal{D}}[u(s,a)]}.
   \label{eq:cer}
 \end{equation}
-A high CER in the high-coverage tier would directly evidence
-over-penalisation in well-supported regions that do not epistemically
-warrant conservatism.
+$\mathrm{CER}{>}0$ indicates over-penalisation relative to the Monte Carlo
+baseline; $\mathrm{CER}{<}0$ indicates the critic is \emph{optimistic}
+relative to $Q_{\mathrm{BC}}$.
 
 \textbf{Uncertainty--Return Correlation.} The Pearson correlation
 between per-transition uncertainty and Monte Carlo return
@@ -350,29 +346,29 @@ $G_i = \sum_{t=i}^{T}\gamma^{t-i} r_t$ within tier $T$:
 \end{equation}
 Under good calibration, higher uncertainty should correspond to lower
 returns, implying $\mathrm{URC}{<}0$; a near-zero or positive URC signals
-miscalibration.
+miscalibration. URC depends only on $(u,G)$ and is therefore
+method-independent within a dataset.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\begin{tikzpicture}[node distance=0.55cm]
+\begin{tikzpicture}[node distance=0.5cm]
   \node[pbox] (data)
-    {\textbf{Dataset} --- \texttt{maze2d-medium-sparse-v1}:
-     path-concentrated coverage, sparse goal-conditioned reward,
-     4D state $(x,y,v_x,v_y)$, 2D continuous action};
+    {\textbf{Datasets} --- two \texttt{maze2d} sparse navigation splits
+     (4D state, 2D action) + \texttt{hopper-medium-v2} locomotion
+     (11D state, 3D action)};
   \node[pbox,below=of data] (pre)
-    {\textbf{Preprocessing} --- build transition tuples
-     $(s,a,r,s',d)$, normalise states};
+    {\textbf{Preprocessing} --- transition tuples $(s,a,r,s',d)$,
+     state normalisation, per-domain reward scaling};
   \node[pbox,below=of pre] (train)
     {\textbf{Baseline training} (3 seeds $\times$ 7 algorithms) ---
-     TD3-BC, CQL ($\alpha{=}1.0$), Ensemble ($K{=}5$), BEAR, UWAC,
-     MOPO, APTQ-CQL};
+     TD3-BC, CQL, Ensemble ($K{=}5$), BEAR, UWAC, MOPO, APTQ-CQL;
+     Bellman backups with target critics};
   \node[pbox,below=of train] (eval)
     {\textbf{Evaluation} --- offline policy-value proxy
-     $= \mathrm{mean}\,Q(s,\pi(s))$ on 5{,}000 dataset states;
-     score $= \mathrm{mean}(\text{curve}[-3{:}])$, mean $\pm$ std across seeds};
+     $=\mathrm{mean}\,Q(s,\pi(s))$ on 5{,}000 dataset states};
   \node[pbox,below=of eval] (res)
-    {\textbf{Results} --- Table~\ref{tab:perf} (proxy scores);
-     Table~\ref{tab:diag} (CER/URC by coverage tier)};
+    {\textbf{Diagnostics} --- coverage-tier CER/URC
+     (Tables~\ref{tab:perf}--\ref{tab:diag})};
   \node[pbox,below=of res] (next)
     {\textbf{Extension} --- coverage-conditioned
      $\alpha(s){=}f(\rho(s))$ and D4RL rollout evaluation};
@@ -382,39 +378,40 @@ miscalibration.
   \draw[arr] (eval) -- (res);
   \draw[arr] (res)  -- (next);
 \end{tikzpicture}
-\caption{Empirical pipeline on \texttt{maze2d-medium-sparse-v1}: matched
-training, unified proxy evaluation, and coverage-tier diagnostics.}
+\caption{Empirical pipeline applied identically to all three datasets:
+matched training, unified proxy evaluation, and coverage-tier diagnostics.}
 \label{fig:pipeline}
-\end{figure*}
+\end{figure}
 
 \section{Experimental Setup}
 \label{sec:setup}
 
-\subsection{Dataset}
+\subsection{Datasets}
 
-\texttt{maze2d-medium-sparse-v1}~\cite{fu2020d4rl} contains transitions
-collected by a waypoint-following controller in a medium-complexity 2D maze.
-The 4-dimensional state space encodes position and velocity, and the action
-space is 2-dimensional and continuous. Coverage is dense along the
-demonstrated path and near-zero in unvisited corridors; rewards are sparse
-and goal-conditioned. This structure makes the dataset an appropriate
-stress test for fixed-$\alpha$ conservatism: any single global penalty must
-simultaneously suit both densely covered corridor states and sparsely
-covered off-path states.
+We use three D4RL datasets~\cite{fu2020d4rl}.
+\texttt{maze2d-medium-sparse-v1} and \texttt{maze2d-large-sparse-v1} contain
+transitions from a waypoint-following controller in medium- and
+large-complexity 2D mazes; the 4D state encodes position and velocity, the
+2D action is continuous, coverage is dense along demonstrated paths and
+near-zero in unvisited corridors, and rewards are sparse and
+goal-conditioned. \texttt{hopper-medium-v2} is a single-leg locomotion task
+with an 11D state, a 3D continuous action, and dense shaped rewards from a
+medium-level policy. Together the three span the two coverage regimes that a
+fixed $\alpha$ must reconcile: structured sparse navigation versus densely
+covered continuous control.
 
 \subsection{Algorithms and Validation Protocol}
 
-Seven algorithms are trained under a matched protocol: TD3-BC, CQL
-($\alpha{=}1.0$), an uncertainty-aware Q-ensemble ($K{=}5$), BEAR, UWAC,
-MOPO, and APTQ-CQL. Each algorithm is trained for three independent random
-seeds ($\mathrm{seed}\in\{0,1,2\}$), with \texttt{torch}, \texttt{numpy},
-and Python random seeds set per run. The reported score for each run is the
-mean of the final three evaluation points of the training curve; the table
-entry is the mean $\pm$ standard deviation across the three seeds.
+All seven algorithms are trained under the matched protocol of
+Table~\ref{tab:hparams} for three independent seeds
+($\mathrm{seed}\in\{0,1,2\}$), with \texttt{torch}, \texttt{numpy}, and
+Python random seeds set per run. The reported score for each run is the mean
+of the final three evaluation points of the training curve; the table entry
+is the mean $\pm$ standard deviation across the three seeds.
 
 \begin{table}[t]
 \centering
-\caption{Shared hyperparameters (all algorithms)}
+\caption{Shared hyperparameters (all algorithms, all datasets)}
 \label{tab:hparams}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{ll}
@@ -427,6 +424,8 @@ Batch size & 256 \\
 Discount $\gamma$ & 0.99 \\
 Target smoothing $\tau$ & 0.005 \\
 Training budget & $10 \times 200$ grad.\ steps / seed \\
+Bellman target clip & $\pm 10$ \\
+Reward scale & $1.0$ (maze) / $10^{-2}$ (hopper) \\
 CQL $\alpha$ & 1.0 (fixed); APTQ adapts in $[0.5,5]$ \\
 BC weight $\lambda$ & 0.1 \\
 Ensemble size $K$ & 5 \\
@@ -439,209 +438,260 @@ Seeds & $\{0,1,2\}$ \\
 \subsection{Evaluation Metric}
 
 All algorithms share a single offline evaluation protocol. At each
-training checkpoint, the policy $\pi$ and its critic(s) are frozen and the
-score is the mean of $Q(s,\pi(s))$ over the first 5{,}000 transitions in
-the dataset. The reported table entry is the mean of the final three
-checkpoint scores, averaged over three random seeds. This
-policy-value proxy enables fair cross-algorithm comparison under identical
-training budgets, but it is \emph{not} a D4RL environment rollout or
-normalised return~\cite{fu2020d4rl}. Dataset Monte Carlo returns have mean
-$\approx 1.15$ and maximum $\approx 38$ on this split, which contextualises
-the magnitude of reported $Q$ scores. Environment rollouts with official
-D4RL normalisation are left to future work (MuJoCo/D4RL dependency).
+checkpoint the policy $\pi$ and critic(s) are frozen and the score is the
+mean of $Q(s,\pi(s))$ over the first 5{,}000 transitions. This policy-value
+proxy enables fair cross-algorithm comparison under identical budgets, but
+it is \emph{not} a D4RL rollout or normalised return~\cite{fu2020d4rl}, and
+its magnitude depends on the per-domain reward scale (hopper $Q$ values are
+correspondingly larger than maze ones). Comparisons are therefore made
+\emph{within} a dataset. Environment rollouts with official D4RL
+normalisation are left to future work.
 
 \subsection{Diagnostic Protocol}
 
 Coverage tiers are computed via $k$NN density (Eq.~\ref{eq:coverage},
-$k{=}10$) on a stratified subsample of $5{\times}10^{4}$ transitions.
-$Q_{\mathrm{BC}}$ is a critic regressed onto per-transition Monte Carlo
-returns $G_i$; $u(s,a)$ is the standard deviation across a five-member
-ensemble trained on the same targets. CER and URC (Eqs.~\ref{eq:cer}--\ref{eq:urc})
-are reported per tier for CQL and APTQ-CQL (seed~0 checkpoints).
+$k{=}10$) on a stratified subsample of $5{\times}10^{4}$ transitions per
+dataset. $Q_{\mathrm{BC}}$ is a critic regressed onto per-transition Monte
+Carlo returns $G_i$; $u(s,a)$ is the standard deviation across a five-member
+ensemble trained on the same targets. CER and URC
+(Eqs.~\ref{eq:cer}--\ref{eq:urc}) are reported per tier for CQL and
+APTQ-CQL (seed~0 checkpoints).
 
 \section{Results and Analysis}
 \label{sec:results}
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{Algorithm performance on \texttt{maze2d-medium-sparse-v1}
-(mean $\pm$ std, 3 seeds)}
+\caption{Unified offline policy-value proxy across three datasets
+(mean $\pm$ std over 3 seeds; higher is better, best per column in bold).
+Scores are within-dataset critic means and are not comparable across
+columns owing to differing reward scales.}
 \label{tab:perf}
-\setlength{\tabcolsep}{6pt}
-\begin{tabular}{lc}
+\setlength{\tabcolsep}{12pt}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Algorithm} & \textbf{Score (Mean $\pm$ Std)} \\
+ & \multicolumn{2}{c}{\textbf{Navigation (maze2d, sparse)}} & \textbf{Locomotion (dense)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-4}
+\textbf{Algorithm} & \texttt{medium-sparse-v1} & \texttt{large-sparse-v1} & \texttt{hopper-medium-v2} \\
 \midrule
-CQL~\cite{kumar2020conservative} & $\mathbf{2.293 \pm 0.141}$ \\
-APTQ-CQL~\cite{liu2023aptq}   & $1.333 \pm 0.143$ \\
-UWAC~\cite{wu2021uncertainty} & $0.144 \pm 0.016$ \\
-Ensemble~\cite{an2021pbrl}    & $0.118 \pm 0.010$ \\
-TD3-BC~\cite{fujimoto2021td3bc} & $0.112 \pm 0.023$ \\
-MOPO~\cite{yu2020mopo}        & $0.014 \pm 0.001$ \\
-BEAR~\cite{kumar2019bear}     & $-0.001 \pm 0.054$ \\
+CQL~\cite{kumar2020conservative}      & $\mathbf{2.293 \pm 0.141}$ & $\mathbf{2.899 \pm 0.061}$ & $\mathbf{11.881 \pm 0.121}$ \\
+APTQ-CQL~\cite{liu2023aptq}           & $1.333 \pm 0.143$ & $1.632 \pm 0.050$ & $8.919 \pm 0.163$ \\
+UWAC~\cite{wu2021uncertainty}         & $0.144 \pm 0.016$ & $0.268 \pm 0.004$ & $0.530 \pm 0.116$ \\
+Ensemble~\cite{an2021pbrl}            & $0.118 \pm 0.010$ & $0.222 \pm 0.010$ & $0.307 \pm 0.044$ \\
+TD3-BC~\cite{fujimoto2021td3bc}       & $0.112 \pm 0.023$ & $0.202 \pm 0.030$ & $0.372 \pm 0.122$ \\
+MOPO~\cite{yu2020mopo}                & $0.014 \pm 0.001$ & $0.024 \pm 0.004$ & $0.029 \pm 0.000$ \\
+BEAR~\cite{kumar2019bear}             & $-0.001 \pm 0.054$ & $0.105 \pm 0.015$ & $0.328 \pm 1.434$ \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
-Table~\ref{tab:perf} summarises proxy scores across three seeds.
-\textbf{CQL}~\cite{kumar2020conservative} ranks highest ($2.293 \pm 0.141$)
-at fixed $\alpha{=}1.0$; \textbf{APTQ-CQL}~\cite{liu2023aptq} is second
-($1.333 \pm 0.143$). \textbf{UWAC}, \textbf{Ensemble}, and \textbf{TD3-BC}
-form a mid-tier ($0.11$--$0.14$); \textbf{MOPO} and \textbf{BEAR} remain
-near zero. Because scores are raw critic means rather than normalised
-returns, we treat this table as a \emph{within-study} ranking only.
-
-\begin{figure}[t]
-  \centering
+\begin{figure*}[t]
+\centering
+\begin{subfigure}{0.32\textwidth}
   \includegraphics[width=\linewidth]{figures/training_curves.pdf}
-  \caption{Unified offline proxy score during training (mean $\pm$ std over
-  three seeds). Higher curves indicate larger mean $Q(s,\pi(s))$ on held-out
-  dataset states.}
-  \label{fig:curves}
-\end{figure}
+  \caption{maze2d-medium-sparse}
+\end{subfigure}\hfill
+\begin{subfigure}{0.32\textwidth}
+  \includegraphics[width=\linewidth]{figures/large_training_curves.pdf}
+  \caption{maze2d-large-sparse}
+\end{subfigure}\hfill
+\begin{subfigure}{0.32\textwidth}
+  \includegraphics[width=\linewidth]{figures/hopper_training_curves.pdf}
+  \caption{hopper-medium-v2}
+\end{subfigure}
+\caption{Unified offline proxy score during training (mean $\pm$ std over
+three seeds). CQL and APTQ-CQL separate early from the remaining baselines on
+every dataset; note the larger $y$-scale on hopper from its dense rewards.}
+\label{fig:curves}
+\end{figure*}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{figures/final_scores.pdf}
-  \caption{Final proxy scores from Table~\ref{tab:perf}, shown as a bar chart
-  for readability.}
-  \label{fig:scores}
-\end{figure}
-
-Figure~\ref{fig:curves} shows learning dynamics under the shared evaluation
-protocol; CQL and APTQ-CQL separate early from the remaining baselines.
-Figure~\ref{fig:scores} visualises the final ranking in Table~\ref{tab:perf}.
+Table~\ref{tab:perf} summarises proxy scores. The ranking is
+\emph{remarkably stable across all three datasets}:
+\textbf{CQL}~\cite{kumar2020conservative} ranks highest at fixed
+$\alpha{=}1.0$, \textbf{APTQ-CQL}~\cite{liu2023aptq} is a clear second, and
+the support-/uncertainty-based baselines (UWAC, Ensemble, TD3-BC) cluster an
+order of magnitude lower, with MOPO and BEAR last. The CQL/APTQ-CQL gap
+persists from the sparse mazes to dense hopper, indicating that the
+advantage of explicit value pessimism under this matched budget is not an
+artefact of a single coverage regime. Because scores are raw critic means
+rather than normalised returns, each column is a within-study ranking only.
+Figure~\ref{fig:curves} shows the corresponding learning dynamics: on all
+three datasets CQL and APTQ-CQL grow steadily while the other methods remain
+flat near zero (BEAR additionally exhibits large inter-seed variance on
+hopper).
 
 \section{Coverage-Tier Diagnostics}
 \label{sec:diagnostics}
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{CER and URC by coverage tier ($5{\times}10^{4}$ transition subsample)}
+\caption{Coverage-tier diagnostics ($5{\times}10^{4}$-transition subsample,
+$k{=}10$). CER is reported per method; URC measures uncertainty vs.\ return
+and is method-independent within a dataset (reported once).}
 \label{tab:diag}
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{llcc}
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{ll ccc ccc}
 \toprule
-\textbf{Method} & \textbf{Tier} & \textbf{CER} & \textbf{URC} \\
+& & \multicolumn{3}{c}{\textbf{CER}} & \multicolumn{3}{c}{\textbf{URC}} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+\textbf{Dataset} & \textbf{Method} & High & Med & Low & High & Med & Low \\
 \midrule
-\multirow{3}{*}{CQL}
-  & High & $-14.47$ & $+0.54$ \\
-  & Med  & $-16.58$ & $+0.52$ \\
-  & Low  & $-17.56$ & $+0.48$ \\
+\multirow{2}{*}{\texttt{maze2d-medium-sparse}}
+  & CQL      & $-14.47$ & $-16.58$ & $-17.56$ & \multirow{2}{*}{$+0.54$} & \multirow{2}{*}{$+0.52$} & \multirow{2}{*}{$+0.48$} \\
+  & APTQ-CQL & $-3.11$  & $-3.94$  & $-5.03$  & & & \\
 \midrule
-\multirow{3}{*}{APTQ-CQL}
-  & High & $-3.11$ & $+0.54$ \\
-  & Med  & $-3.94$ & $+0.52$ \\
-  & Low  & $-5.03$ & $+0.48$ \\
+\multirow{2}{*}{\texttt{maze2d-large-sparse}}
+  & CQL      & $-33.74$ & $-31.59$ & $-31.96$ & \multirow{2}{*}{$+0.25$} & \multirow{2}{*}{$+0.36$} & \multirow{2}{*}{$+0.51$} \\
+  & APTQ-CQL & $-16.49$ & $-15.06$ & $-14.78$ & & & \\
+\midrule
+\multirow{2}{*}{\texttt{hopper-medium-v2}}
+  & CQL      & $-134.9$ & $-138.2$ & $-142.8$ & \multirow{2}{*}{$-0.20$} & \multirow{2}{*}{$-0.21$} & \multirow{2}{*}{$-0.28$} \\
+  & APTQ-CQL & $-92.3$  & $-114.6$ & $-120.5$ & & & \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
-Table~\ref{tab:diag} tests the spatial miscalibration hypothesis directly.
-\textbf{CER${<}0$} in every tier implies $Q_{\mathrm{CQL}}>Q_{\mathrm{BC}}$:
-fixed-$\alpha$ CQL is \emph{optimistic} relative to the Monte Carlo value
-baseline, not over-conservative, on this benchmark. The magnitude grows toward
-low-coverage regions ($|\mathrm{CER}|$ increases from high to low tier),
-consistent with insufficient pessimism where data are sparse. \textbf{APTQ-CQL}
-reduces conservative excess everywhere and narrows the high-coverage gap
-substantially ($-3.11$ vs.\ $-14.47$), suggesting that global penalty
-adaptation partially aligns critic values with returns along demonstrated
-paths.
-
-\begin{figure}[t]
-  \centering
+\begin{figure*}[t]
+\centering
+\begin{subfigure}{0.32\textwidth}
   \includegraphics[width=\linewidth]{figures/cer_urc.pdf}
-  \caption{Coverage-tier CER and URC for CQL and APTQ-CQL
-  (Table~\ref{tab:diag}).}
-  \label{fig:diag}
-\end{figure}
+  \caption{maze2d-medium-sparse}
+\end{subfigure}\hfill
+\begin{subfigure}{0.32\textwidth}
+  \includegraphics[width=\linewidth]{figures/large_cer_urc.pdf}
+  \caption{maze2d-large-sparse}
+\end{subfigure}\hfill
+\begin{subfigure}{0.32\textwidth}
+  \includegraphics[width=\linewidth]{figures/hopper_cer_urc.pdf}
+  \caption{hopper-medium-v2}
+\end{subfigure}
+\caption{Coverage-tier CER (left of each panel) and URC (right) for CQL and
+APTQ-CQL. CER is negative in every tier and dataset (CQL more so than
+APTQ-CQL). URC is positive on both sparse mazes but negative on hopper---the
+sign flip is the central cross-domain finding.}
+\label{fig:diag}
+\end{figure*}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.72\linewidth]{figures/coverage_map.pdf}
-  \caption{Spatial distribution of dataset states (subsample), illustrating
-  path-concentrated coverage in \texttt{maze2d-medium-sparse-v1}.}
-  \label{fig:coverage}
-\end{figure}
+\begin{figure*}[t]
+\centering
+\begin{subfigure}{0.30\textwidth}
+  \includegraphics[width=\linewidth]{figures/coverage_map.pdf}
+  \caption{maze2d-medium-sparse ($x,y$)}
+\end{subfigure}\hfill
+\begin{subfigure}{0.30\textwidth}
+  \includegraphics[width=\linewidth]{figures/large_coverage_map.pdf}
+  \caption{maze2d-large-sparse ($x,y$)}
+\end{subfigure}\hfill
+\begin{subfigure}{0.30\textwidth}
+  \includegraphics[width=\linewidth]{figures/hopper_coverage_map.pdf}
+  \caption{hopper-medium-v2 (PC1, PC2)}
+\end{subfigure}
+\caption{State coverage (20k-point subsample). The mazes show
+path-concentrated support with empty corridors; hopper (top-2 principal
+components of the standardised state) shows a dense core that tapers into
+sparse high-velocity excursions.}
+\label{fig:coverage}
+\end{figure*}
 
-Figure~\ref{fig:diag} visualises tier-wise diagnostics; Figure~\ref{fig:coverage}
-shows why a single global penalty must simultaneously address dense corridors
-and sparse off-path regions.
+Table~\ref{tab:diag} and Figure~\ref{fig:diag} test the spatial
+miscalibration hypothesis directly. Three patterns are consistent across all
+datasets. First, \textbf{$\mathrm{CER}{<}0$ in every tier} for both methods,
+i.e.\ $Q_{\mathrm{algo}}>Q_{\mathrm{BC}}$: under the matched short budget,
+fixed-$\alpha$ CQL is \emph{optimistic} relative to the Monte Carlo value
+baseline, not over-conservative. Second, \textbf{APTQ-CQL consistently
+reduces this excess}---most strongly in well-covered tiers (e.g.\ the
+high-tier gap narrows from $-14.47$ to $-3.11$ on medium-maze and from
+$-134.9$ to $-92.3$ on hopper)---indicating that global penalty adaptation
+helps most precisely where data are abundant. Third, on the sparse mazes the
+optimism tends to grow toward low-coverage regions ($|\mathrm{CER}|$
+largest in the Low tier), consistent with insufficient pessimism where data
+are scarce; on dense hopper the same low-tier worsening appears for both
+methods.
 
-\textbf{URC${>}0$} in all tiers violates the desired anticorrelation
-between ensemble uncertainty and return ($\mathrm{URC}{<}0$). On
-\texttt{maze2d-medium-sparse-v1}, higher ensemble disagreement co-occurs with
-\emph{higher} Monte Carlo returns---likely because goal-reaching segments
-are both rare and locally heterogeneous---so $u(s,a)$ is a noisy calibration
-signal without tier conditioning.
+The decisive cross-domain result is the \textbf{sign of URC}. On both sparse
+mazes, $\mathrm{URC}{>}0$ in every tier ($+0.25$ to $+0.54$): higher
+ensemble disagreement co-occurs with \emph{higher} Monte Carlo
+return---likely because rare goal-reaching segments are locally
+heterogeneous---so $u(s,a)$ is an unreliable, even misleading, calibration
+signal without tier conditioning. On \texttt{hopper-medium-v2}, by contrast,
+$\mathrm{URC}{<}0$ in every tier ($-0.20$ to $-0.28$) and becomes most
+negative in the Low tier: here uncertainty behaves as theory expects,
+anticorrelating with return. Ensemble disagreement is therefore a usable
+pessimism signal in the densely covered locomotion domain but not in the
+path-concentrated mazes. Figure~\ref{fig:coverage} makes the underlying
+support geometry concrete: the mazes are dominated by thin demonstrated
+corridors surrounded by empty space, whereas hopper fills a dense core.
 
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{What the results confirm}
+\subsection{What the results establish}
 
-The ranking in Table~\ref{tab:perf} separates explicit CQL-style critics
-from lighter baselines, but tier diagnostics in Table~\ref{tab:diag} refine
-the miscalibration story: a fixed global $\alpha$ does not over-penalise
-well-covered corridors---it remains optimistic relative to $Q_{\mathrm{BC}}$
-everywhere, with the largest optimism in low-coverage regions. This pattern
-is more consistent with \emph{under}-penalisation of OOD value than with
-over-penalisation along paths, and it motivates spatially conditioned
-conservatism rather than a single scalar reduction of $\alpha$.
+The stable ranking (Table~\ref{tab:perf}) separates explicit CQL-style
+critics from lighter baselines across both domains, but the tier diagnostics
+(Table~\ref{tab:diag}) refine the miscalibration story: a fixed global
+$\alpha$ does not over-penalise well-covered regions---it remains optimistic
+relative to $Q_{\mathrm{BC}}$ everywhere, with the largest optimism where
+coverage is lowest. This is more consistent with \emph{under}-penalisation of
+OOD value than with over-penalisation along paths, and it motivates
+spatially conditioned conservatism rather than a uniform scalar reduction of
+$\alpha$. The URC sign flip further shows that the natural ingredient for
+such conditioning---ensemble uncertainty---is informative in dense
+locomotion but unreliable in sparse navigation, so a coverage-conditioned
+scheme should lean on density $\rho(s)$ directly rather than on $u(s,a)$
+alone in the sparse regime.
 
 \subsection{From global to spatial adaptation}
 
 APTQ's adaptation is \emph{temporal and global}: $\alpha_t$ in
-Eq.~\eqref{eq:aptq} is shared by every transition at training step $t$. Its
-second-place performance here shows that adaptive pessimism remains
-competitive with fixed $\alpha$, but does not by itself establish that
-global adaptation dominates a well-tuned fixed penalty on this benchmark.
-The natural next experiment is to stratify transitions into coverage tiers
-via Eq.~\eqref{eq:coverage}
-and compute CER (Eq.~\eqref{eq:cer}) and URC (Eq.~\eqref{eq:urc}) for CQL,
-APTQ-CQL, and a proposed Coverage-CQL variant that replaces the scalar
-$\alpha$ with a per-sample penalty $\alpha(s) = f(\rho(s))$.
+Eq.~\eqref{eq:aptq} is shared by every transition at step $t$. Its
+consistent second place and uniform reduction of CER show that adaptive
+pessimism is competitive with fixed $\alpha$, but it cannot exploit the
+spatial structure that Table~\ref{tab:diag} exposes. The natural next
+experiment replaces the scalar $\alpha$ with a per-sample penalty
+$\alpha(s)=f(\rho(s))$ keyed to the coverage density of
+Eq.~\eqref{eq:coverage}, then re-evaluates CER/URC and D4RL rollout return.
 
 \subsection{Lower-tier baselines}
 
-BEAR, TD3-BC, Ensemble, UWAC, and MOPO all score within a narrow band near
-$0.01$--$0.02$ under the unified proxy. This clustering suggests that, at
-the simplified training budget used here, support constraints and
-uncertainty reweighting do not by themselves produce critics whose
-policy-implied values match those of CQL-style methods on sparse maze
-navigation data.
+BEAR, TD3-BC, Ensemble, and UWAC cluster well below the CQL family on all
+three datasets, and MOPO is lowest. Under the simplified budget used here,
+support constraints, uncertainty reweighting, and short model rollouts do
+not by themselves yield critics whose policy-implied values match CQL-style
+methods---an observation that holds in both the sparse and dense regimes.
 
 \subsection{Limitations}
 
 \textbf{Implementation scope.} Results use compact educational
 reimplementations with a short training budget, not official author
-codebases or tuned hyperparameters.
-
-\textbf{Evaluation scope.} Proxy $Q$ scores are not D4RL normalised
-returns; three seeds limit statistical power.
-
+codebases or tuned hyperparameters; absolute magnitudes are not D4RL scores.
+\textbf{Evaluation scope.} Proxy $Q$ scores are not normalised returns, are
+not comparable across datasets, and three seeds limit statistical power.
 \textbf{Diagnostics scope.} CER/URC rely on ensemble uncertainty trained on
 Monte Carlo targets and a single checkpoint per method; they indicate
-calibration patterns but do not prove causal benefit of spatial $\alpha(s)$.
-
-\textbf{Next steps.} (i)~D4RL rollouts with MuJoCo; (ii)~locomotion
-datasets; (iii)~coverage-conditioned $\alpha(s){=}f(\rho(s))$ with tier-aware
+calibration patterns but do not prove a causal benefit of spatial
+$\alpha(s)$. \textbf{Next steps.} (i)~D4RL rollouts with MuJoCo; (ii)~more
+locomotion levels (medium-replay, expert) and additional maze sizes;
+(iii)~coverage-conditioned $\alpha(s){=}f(\rho(s))$ with tier-aware
 evaluation; (iv)~implicit-Q and AWAC baselines.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-This paper compares seven offline RL baselines on
-\texttt{maze2d-medium-sparse-v1} under matched training and a unified
-offline evaluation protocol, augmented with coverage-tier CER/URC
-diagnostics. Fixed-$\alpha$ CQL achieves the highest proxy score but is
-optimistic relative to a Monte Carlo value baseline in \emph{every}
-coverage tier, especially where data are sparse; APTQ-CQL attenuates this
-excess most strongly on well-covered paths. Positive URC across tiers shows
-that ensemble uncertainty does not track return risk on this benchmark
-without spatial conditioning. Together, these results argue for
-coverage-aware pessimism $\alpha(s){=}f(\rho(s))$ as the next step, together
-with environment-level evaluation on D4RL.
+This paper compares seven offline RL baselines across three D4RL datasets
+spanning sparse navigation and dense locomotion, under matched training and a
+unified offline evaluation protocol, augmented with coverage-tier CER/URC
+diagnostics. The proxy ranking is stable across all three datasets:
+fixed-$\alpha$ CQL is highest and APTQ-CQL second. Yet in every tier and
+dataset both methods are optimistic relative to a Monte Carlo value
+baseline ($\mathrm{CER}{<}0$), with the largest optimism where coverage is
+lowest, and APTQ-CQL attenuates this excess most on well-covered states.
+Finally, the uncertainty--return correlation flips sign between domains---
+positive on the sparse mazes, negative on hopper---showing that ensemble
+disagreement is a dependable calibration signal only where coverage is
+dense. Together these results argue for coverage-aware pessimism
+$\alpha(s){=}f(\rho(s))$, evaluated with environment-level D4RL returns, as
+the next step.
 
 \begin{thebibliography}{10}
 

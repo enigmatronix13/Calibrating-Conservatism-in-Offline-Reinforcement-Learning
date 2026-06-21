@@ -9,8 +9,9 @@ __pycache__/
 Thumbs.db
 
 # Large generated artifacts (reproduce via experiments/)
-maze_2d_results/checkpoints/
-maze_2d_results/maze2d-medium-sparse-v1.hdf5
+# Checkpoints and downloaded datasets for every dataset's results dir.
+**/checkpoints/
+*.hdf5
 
 # Old local drafts
 Calibrating_Conservatism_in_Offline_Reinforcement_Learning*.pdf

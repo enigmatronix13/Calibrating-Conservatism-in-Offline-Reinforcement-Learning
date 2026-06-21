@@ -1,4 +1,9 @@
-"""Generate paper figures from maze_2d_results JSON artifacts."""
+"""Generate paper figures from the active dataset's results artifacts.
+
+Select the dataset with the MAZE2D_DATASET environment variable (same registry
+as common.py). Figures for the secondary dataset are written with a filename
+prefix (e.g. ``large_``) so they never overwrite the primary dataset's figures.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +13,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from common import DATASET_NAME, FIG_PREFIX, HDF5_FILE, OUTPUT_DIR
+
+IS_MAZE = DATASET_NAME.startswith("maze2d")
+
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS = ROOT / "maze_2d_results"
+RESULTS = OUTPUT_DIR
 FIG_DIRS = [
     ROOT / "paper" / "figures",
     ROOT / "overleaf" / "figures",
@@ -37,10 +46,11 @@ TIERS = ("High", "Med", "Low")
 
 
 def save_all(fig: plt.Figure, name: str) -> None:
+    fname = f"{FIG_PREFIX}{name}"
     for d in FIG_DIRS:
         d.mkdir(parents=True, exist_ok=True)
-        fig.savefig(d / f"{name}.pdf", bbox_inches="tight")
-        fig.savefig(d / f"{name}.png", dpi=200, bbox_inches="tight")
+        fig.savefig(d / f"{fname}.pdf", bbox_inches="tight")
+        fig.savefig(d / f"{fname}.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -128,7 +138,7 @@ def plot_cer_urc() -> None:
 def plot_coverage_map() -> None:
     import h5py
 
-    h5_path = RESULTS / "maze2d-medium-sparse-v1.hdf5"
+    h5_path = RESULTS / HDF5_FILE
     if not h5_path.exists():
         print("Skipping coverage map: HDF5 not found")
         return
@@ -139,12 +149,24 @@ def plot_coverage_map() -> None:
     rng = np.random.default_rng(0)
     n = len(obs)
     idx = rng.choice(n, size=min(20_000, n), replace=False)
-    xy = obs[idx, :2]
+    sub = obs[idx]
+
+    if IS_MAZE:
+        # First two dims are the (x, y) maze position: a literal spatial map.
+        xy = sub[:, :2]
+        xlabel, ylabel = "Position $x$", "Position $y$"
+    else:
+        # No 2D position for locomotion: project onto the top-2 PCs of the
+        # standardised observation so the support geometry is still visible.
+        z = (sub - sub.mean(0)) / (sub.std(0) + 1e-6)
+        _, _, vt = np.linalg.svd(z, full_matrices=False)
+        xy = z @ vt[:2].T
+        xlabel, ylabel = "PC 1", "PC 2"
 
     fig, ax = plt.subplots(figsize=(4.5, 4.5))
     ax.scatter(xy[:, 0], xy[:, 1], s=1, alpha=0.25, c="#1f77b4", rasterized=True)
-    ax.set_xlabel("Position $x$")
-    ax.set_ylabel("Position $y$")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     ax.set_title("Dataset state coverage (subsample)")
     ax.set_aspect("equal", adjustable="box")
     save_all(fig, "coverage_map")
@@ -156,7 +178,10 @@ def main():
     plot_final_scores()
     plot_cer_urc()
     plot_coverage_map()
-    print("Figures written to paper/figures/ and overleaf/figures/")
+    print(
+        f"Figures for {DATASET_NAME} (prefix {FIG_PREFIX!r}) written to "
+        "paper/figures/ and overleaf/figures/"
+    )
 
 
 if __name__ == "__main__":
