@@ -1,5 +1,17 @@
 {
-  "dataset": "maze2d",
-  "date": "2026-04-22T13:53:31.894542",
-  "device": "cpu"
+  "dataset": "maze2d-medium-sparse-v1",
+  "date": "2026-06-21T10:03:20.609692",
+  "device": "cpu",
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "outer_steps": 10,
+  "inner_steps": 200,
+  "gamma": 0.99,
+  "tau": 0.005,
+  "eval_states": 5000,
+  "implementation": "educational reimplementation with unified Bellman backup",
+  "evaluation": "mean_Q(s, pi(s)); not D4RL rollout"
 }
